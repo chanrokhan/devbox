@@ -12,7 +12,7 @@ use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha512};
 use uuid::Uuid;
 
-const STYLE: Asset = asset!("/assets/main.css");
+const STYLE: &str = include_str!("../assets/main.css");
 
 fn main() {
     let window = WindowBuilder::new()
@@ -87,7 +87,7 @@ fn App() -> Element {
     let mut selected = use_signal(|| Tool::Time);
 
     rsx! {
-        document::Link { rel: "stylesheet", href: STYLE }
+        document::Style { "{STYLE}" }
         main { class: "app-shell",
             aside { class: "sidebar",
                 div { class: "brand",
@@ -98,7 +98,7 @@ fn App() -> Element {
                     }
                     div { class: "brand-title",
                         strong { "DevToolbox" }
-                        span { "macOS 开发工具集" }
+                        span { "开发工具集" }
                     }
                 }
 

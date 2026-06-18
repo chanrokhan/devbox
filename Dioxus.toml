@@ -4,3 +4,10 @@ default_platform = "desktop"
 
 [web.app]
 title = "DevToolbox"
+
+[bundle]
+identifier = "com.chanrokhan.DevToolbox"
+publisher = "chanrokhan"
+icon = [
+  "assets/app-icon.png"
+]

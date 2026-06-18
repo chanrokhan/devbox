@@ -7,7 +7,7 @@ edition = "2024"
 aes-gcm = "0.10"
 base64 = "0.22"
 chrono = { version = "0.4", features = ["clock"] }
-dioxus = { version = "0.6", features = ["desktop"] }
+dioxus = { version = "0.7.9", features = ["desktop"] }
 hex = "0.4"
 md-5 = "0.10"
 rand = "0.8"

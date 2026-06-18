@@ -1,0 +1,6 @@
+[application]
+name = "DevToolbox"
+default_platform = "desktop"
+
+[web.app]
+title = "DevToolbox"

@@ -75,27 +75,9 @@ button:active {
 
 .brand {
   display: grid;
-  gap: 16px;
+  gap: 6px;
   padding: 4px 8px 0;
 }
-
-.traffic {
-  display: flex;
-  gap: 8px;
-  height: 14px;
-  align-items: center;
-}
-
-.dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  display: block;
-}
-
-.red { background: #ff5f57; }
-.yellow { background: #febc2e; }
-.green { background: #28c840; }
 
 .brand-title {
   display: grid;

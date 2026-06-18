@@ -91,11 +91,6 @@ fn App() -> Element {
         main { class: "app-shell",
             aside { class: "sidebar",
                 div { class: "brand",
-                    div { class: "traffic",
-                        span { class: "dot red" }
-                        span { class: "dot yellow" }
-                        span { class: "dot green" }
-                    }
                     div { class: "brand-title",
                         strong { "DevToolbox" }
                         span { "开发工具集" }

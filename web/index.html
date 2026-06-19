@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DevToolbox</title>
+    <link rel="icon" href="./assets/app-icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./styles.css?v=20260619-ui-refresh" />
+  </head>
+  <body>
+    <div class="ui-version" aria-hidden="true">UI refresh 2026-06-19</div>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <nav class="tool-nav" aria-label="工具导航">
+          <button class="nav-item active" data-tool="time" type="button">
+            <span class="nav-icon">◷</span>
+            <span class="nav-copy">
+              <strong>时间转换</strong>
+              <small>Unix / UTC / 本地时间</small>
+            </span>
+          </button>
+          <button class="nav-item" data-tool="json" type="button">
+            <span class="nav-icon">{}</span>
+            <span class="nav-copy">
+              <strong>JSON 工具</strong>
+              <small>格式化、压缩、树视图</small>
+            </span>
+          </button>
+          <button class="nav-item" data-tool="codec" type="button">
+            <span class="nav-icon">⇄</span>
+            <span class="nav-copy">
+              <strong>编码转换</strong>
+              <small>Base64、URL、Hex</small>
+            </span>
+          </button>
+          <button class="nav-item" data-tool="crypto" type="button">
+            <span class="nav-icon">#</span>
+            <span class="nav-copy">
+              <strong>加密摘要</strong>
+              <small>Hash 与 AES-GCM</small>
+            </span>
+          </button>
+          <button class="nav-item" data-tool="random" type="button">
+            <span class="nav-icon">✦</span>
+            <span class="nav-copy">
+              <strong>随机生成</strong>
+              <small>密码、Key、UUID</small>
+            </span>
+          </button>
+        </nav>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Local first</p>
+            <h1 id="page-title">时间转换</h1>
+            <p id="page-subtitle">Unix 时间戳、UTC、本地时间互转</p>
+          </div>
+          <div class="top-actions">
+            <button id="copy-output" class="ghost-button" type="button">复制结果</button>
+            <span class="status-badge">离线处理</span>
+          </div>
+        </header>
+
+        <div class="tool-surface">
+          <section class="tool-panel active" id="tool-time">
+            <div class="grid two">
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <h2>时间戳转日期</h2>
+                    <span>秒 / 毫秒自动识别</span>
+                  </div>
+                </div>
+                <textarea id="timestamp-input" class="field mono short"></textarea>
+                <div class="button-row">
+                  <button data-action="timestamp-convert" type="button">转换</button>
+                  <button data-action="timestamp-now-sec" type="button">当前秒</button>
+                  <button data-action="timestamp-now-ms" type="button">当前毫秒</button>
+                </div>
+                <pre id="time-output" class="output-block mono"></pre>
+              </article>
+
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <h2>日期转时间戳</h2>
+                    <span>YYYY-MM-DD HH:mm:ss</span>
+                  </div>
+                </div>
+                <textarea id="datetime-input" class="field mono short"></textarea>
+                <div class="button-row">
+                  <button data-action="datetime-convert" type="button">转换</button>
+                  <button data-action="datetime-now" type="button">填入当前时间</button>
+                </div>
+                <div class="reference-list" id="clock-metrics"></div>
+              </article>
+            </div>
+          </section>
+
+          <section class="tool-panel" id="tool-json">
+            <div class="grid two fill">
+              <article class="panel tall">
+                <div class="panel-head">
+                  <div>
+                    <h2>输入</h2>
+                    <span>粘贴 JSON 文本</span>
+                  </div>
+                </div>
+                <textarea id="json-input" class="field mono grow"></textarea>
+                <div class="button-row">
+                  <button data-action="json-pretty" type="button">格式化</button>
+                  <button data-action="json-minify" type="button">压缩</button>
+                  <button data-action="json-validate" type="button">校验</button>
+                </div>
+                <div id="json-status" class="status-pill">等待处理</div>
+              </article>
+
+              <article class="panel tall">
+                <div class="panel-head">
+                  <div>
+                    <h2>输出</h2>
+                    <span>源码 / 树结构</span>
+                  </div>
+                </div>
+                <div class="segmented">
+                  <button class="segment active" data-json-view="source" type="button">高亮源码</button>
+                  <button class="segment" data-json-view="tree" type="button">树结构</button>
+                </div>
+                <pre id="json-source" class="json-source mono"></pre>
+                <div id="json-tree" class="json-tree mono hidden"></div>
+              </article>
+            </div>
+          </section>
+
+          <section class="tool-panel" id="tool-codec">
+            <div class="grid two fill">
+              <article class="panel tall">
+                <div class="panel-head">
+                  <div>
+                    <h2>原文 / 编码内容</h2>
+                    <span>UTF-8 文本</span>
+                  </div>
+                </div>
+                <textarea id="codec-input" class="field mono grow"></textarea>
+                <div class="button-grid">
+                  <button data-codec="base64_encode" type="button">Base64 编码</button>
+                  <button data-codec="base64_decode" type="button">Base64 解码</button>
+                  <button data-codec="url_encode" type="button">URL 编码</button>
+                  <button data-codec="url_decode" type="button">URL 解码</button>
+                  <button data-codec="hex_encode" type="button">Hex 编码</button>
+                  <button data-codec="hex_decode" type="button">Hex 解码</button>
+                </div>
+              </article>
+              <article class="panel tall">
+                <div class="panel-head">
+                  <div>
+                    <h2>结果</h2>
+                    <span>编码转换输出</span>
+                  </div>
+                </div>
+                <textarea id="codec-output" class="field mono grow output-target"></textarea>
+              </article>
+            </div>
+          </section>
+
+          <section class="tool-panel" id="tool-crypto">
+            <div class="grid two fill">
+              <article class="panel tall">
+                <div class="panel-head">
+                  <div>
+                    <h2>输入</h2>
+                    <span>摘要或 AES-GCM 明文/密文</span>
+                  </div>
+                </div>
+                <textarea id="crypto-input" class="field mono grow"></textarea>
+                <div class="button-grid">
+                  <button data-hash="md5" type="button">MD5</button>
+                  <button data-hash="sha1" type="button">SHA-1</button>
+                  <button data-hash="sha256" type="button">SHA-256</button>
+                  <button data-hash="sha512" type="button">SHA-512</button>
+                </div>
+                <div class="key-grid">
+                  <label>
+                    <span>AES Key Hex（16 或 32 字节）</span>
+                    <input id="aes-key" class="field mono single" />
+                  </label>
+                  <label>
+                    <span>Nonce Hex（12 字节）</span>
+                    <input id="aes-nonce" class="field mono single" />
+                  </label>
+                </div>
+                <div class="button-row">
+                  <button data-action="aes-key" type="button">生成 AES-256 Key</button>
+                  <button data-action="aes-nonce" type="button">生成 Nonce</button>
+                  <button data-aes="encrypt" type="button">AES-GCM 加密</button>
+                  <button data-aes="decrypt" type="button">AES-GCM 解密</button>
+                </div>
+              </article>
+              <article class="panel tall">
+                <div class="panel-head">
+                  <div>
+                    <h2>结果</h2>
+                    <span>摘要为 Hex；AES 密文为 Base64</span>
+                  </div>
+                </div>
+                <textarea id="crypto-output" class="field mono grow output-target"></textarea>
+              </article>
+            </div>
+          </section>
+
+          <section class="tool-panel" id="tool-random">
+            <div class="grid two">
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <h2>生成器</h2>
+                    <span>Token、Secret、测试数据</span>
+                  </div>
+                </div>
+                <label class="inline-field">
+                  <span>长度</span>
+                  <input id="random-length" class="field mono single small-input" value="32" />
+                </label>
+                <div class="button-grid">
+                  <button data-random="password" type="button">随机密码</button>
+                  <button data-random="hex" type="button">Hex Key</button>
+                  <button data-random="base64" type="button">Base64 Key</button>
+                  <button data-random="uuid" type="button">UUID v4</button>
+                </div>
+                <div class="reference-list" id="random-presets"></div>
+              </article>
+              <article class="panel">
+                <div class="panel-head">
+                  <div>
+                    <h2>结果</h2>
+                    <span>可复制生成值</span>
+                  </div>
+                </div>
+                <textarea id="random-output" class="field mono medium output-target"></textarea>
+              </article>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

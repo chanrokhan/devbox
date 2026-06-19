@@ -4,560 +4,45 @@ use aes_gcm::{
 };
 use base64::{Engine, engine::general_purpose};
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone, Utc};
-use dioxus::desktop::{Config, WindowBuilder};
-use dioxus::prelude::*;
 use md5::Md5;
 use rand::{Rng, RngCore, distributions::Alphanumeric, thread_rng};
+use serde::Serialize;
 use sha1::Sha1;
 use sha2::{Digest, Sha256, Sha512};
 use uuid::Uuid;
 
-const STYLE: &str = include_str!("../assets/main.css");
-
-fn main() {
-    let window = WindowBuilder::new()
-        .with_title("DevToolbox")
-        .with_inner_size(dioxus::desktop::LogicalSize::new(1180.0, 760.0))
-        .with_min_inner_size(dioxus::desktop::LogicalSize::new(980.0, 640.0));
-
-    LaunchBuilder::desktop()
-        .with_cfg(Config::new().with_window(window))
-        .launch(App);
+#[derive(Serialize)]
+struct ClockSnapshot {
+    local: String,
+    utc: String,
+    unix_seconds: i64,
+    unix_millis: i64,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Tool {
-    Time,
-    Json,
-    Codec,
-    Crypto,
-    Random,
+#[derive(Serialize)]
+struct JsonResult {
+    output: String,
+    status: String,
+    parsed: Option<serde_json::Value>,
 }
 
-impl Tool {
-    fn title(self) -> &'static str {
-        match self {
-            Self::Time => "时间转换",
-            Self::Json => "JSON 工具",
-            Self::Codec => "编码转换",
-            Self::Crypto => "加密摘要",
-            Self::Random => "随机生成",
-        }
-    }
-
-    fn subtitle(self) -> &'static str {
-        match self {
-            Self::Time => "Unix 时间戳、UTC、本地时间互转",
-            Self::Json => "格式化、压缩、校验 JSON 内容",
-            Self::Codec => "Base64、URL、Hex 编解码",
-            Self::Crypto => "哈希摘要与 AES-GCM 加解密",
-            Self::Random => "Key、密码、UUID 与随机字节",
-        }
-    }
-
-    fn icon(self) -> &'static str {
-        match self {
-            Self::Time => "◷",
-            Self::Json => "{}",
-            Self::Codec => "⇄",
-            Self::Crypto => "⌁",
-            Self::Random => "✦",
-        }
-    }
-
-    fn all() -> [Tool; 5] {
-        [
-            Self::Time,
-            Self::Json,
-            Self::Codec,
-            Self::Crypto,
-            Self::Random,
-        ]
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum JsonView {
-    Source,
-    Tree,
-}
-
-#[component]
-fn App() -> Element {
-    let mut selected = use_signal(|| Tool::Time);
-
-    rsx! {
-        document::Style { "{STYLE}" }
-        main { class: "app-shell",
-            aside { class: "sidebar",
-                div { class: "brand",
-                    div { class: "brand-title",
-                        strong { "DevToolbox" }
-                        span { "开发工具集" }
-                    }
-                }
-
-                nav { class: "tool-nav",
-                    for tool in Tool::all() {
-                        button {
-                            class: if selected() == tool { "nav-item active" } else { "nav-item" },
-                            onclick: move |_| selected.set(tool),
-                            span { class: "nav-icon", "{tool.icon()}" }
-                            span { class: "nav-copy",
-                                strong { "{tool.title()}" }
-                                small { "{tool.subtitle()}" }
-                            }
-                        }
-                    }
-                }
-            }
-
-            section { class: "workspace",
-                header { class: "topbar",
-                    div {
-                        h1 { "{selected().title()}" }
-                        p { "{selected().subtitle()}" }
-                    }
-                    div { class: "badge", "本地处理" }
-                }
-
-                div { class: "tool-surface",
-                    match selected() {
-                        Tool::Time => rsx! { TimeTool {} },
-                        Tool::Json => rsx! { JsonTool {} },
-                        Tool::Codec => rsx! { CodecTool {} },
-                        Tool::Crypto => rsx! { CryptoTool {} },
-                        Tool::Random => rsx! { RandomTool {} },
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn TimeTool() -> Element {
+#[tauri::command]
+fn clock_snapshot() -> ClockSnapshot {
     let now = Local::now();
-    let mut timestamp = use_signal(|| now.timestamp().to_string());
-    let mut input_datetime = use_signal(|| now.format("%Y-%m-%d %H:%M:%S").to_string());
-    let mut output = use_signal(|| time_from_timestamp(&timestamp()));
 
-    rsx! {
-        div { class: "grid two",
-            section { class: "panel",
-                div { class: "panel-head",
-                    h2 { "时间戳转日期" }
-                    span { "秒 / 毫秒自动识别" }
-                }
-                textarea {
-                    class: "field mono short",
-                    value: "{timestamp}",
-                    oninput: move |event| {
-                        timestamp.set(event.value());
-                    }
-                }
-                div { class: "button-row",
-                    button {
-                        onclick: move |_| output.set(time_from_timestamp(&timestamp())),
-                        "转换"
-                    }
-                    button {
-                        onclick: move |_| {
-                            let value = Local::now().timestamp().to_string();
-                            timestamp.set(value.clone());
-                            output.set(time_from_timestamp(&value));
-                        },
-                        "当前秒"
-                    }
-                    button {
-                        onclick: move |_| {
-                            let value = Local::now().timestamp_millis().to_string();
-                            timestamp.set(value.clone());
-                            output.set(time_from_timestamp(&value));
-                        },
-                        "当前毫秒"
-                    }
-                }
-                OutputBlock { value: output() }
-            }
-
-            section { class: "panel",
-                div { class: "panel-head",
-                    h2 { "日期转时间戳" }
-                    span { "格式：YYYY-MM-DD HH:mm:ss" }
-                }
-                textarea {
-                    class: "field mono short",
-                    value: "{input_datetime}",
-                    oninput: move |event| input_datetime.set(event.value())
-                }
-                div { class: "button-row",
-                    button {
-                        onclick: move |_| output.set(timestamp_from_local(&input_datetime())),
-                        "转换"
-                    }
-                    button {
-                        onclick: move |_| {
-                            let value = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-                            input_datetime.set(value.clone());
-                            output.set(timestamp_from_local(&value));
-                        },
-                        "填入当前时间"
-                    }
-                }
-                div { class: "reference-list",
-                    Metric { label: "本地时间", value: Local::now().format("%Y-%m-%d %H:%M:%S %:z").to_string() }
-                    Metric { label: "UTC 时间", value: Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string() }
-                    Metric { label: "Unix 秒", value: Local::now().timestamp().to_string() }
-                    Metric { label: "Unix 毫秒", value: Local::now().timestamp_millis().to_string() }
-                }
-            }
-        }
+    ClockSnapshot {
+        local: now.format("%Y-%m-%d %H:%M:%S %:z").to_string(),
+        utc: now
+            .with_timezone(&Utc)
+            .format("%Y-%m-%d %H:%M:%S UTC")
+            .to_string(),
+        unix_seconds: now.timestamp(),
+        unix_millis: now.timestamp_millis(),
     }
 }
 
-#[component]
-fn JsonTool() -> Element {
-    let mut input = use_signal(|| {
-        r#"{"name":"DevToolbox","features":["json","base64","aes"],"config":{"theme":"native","offline":true},"local":true}"#.to_string()
-    });
-    let mut output = use_signal(|| pretty_json(&input()));
-    let mut status = use_signal(|| "等待处理".to_string());
-    let mut parsed = use_signal(|| parse_json_value(&input()).ok());
-    let mut view = use_signal(|| JsonView::Source);
-
-    rsx! {
-        div { class: "grid two fill",
-            section { class: "panel tall",
-                div { class: "panel-head",
-                    h2 { "输入" }
-                    span { "粘贴 JSON 文本" }
-                }
-                textarea {
-                    class: "field mono grow",
-                    value: "{input}",
-                    oninput: move |event| input.set(event.value())
-                }
-                div { class: "button-row",
-                    button {
-                        onclick: move |_| {
-                            let result = pretty_json(&input());
-                            status.set(json_status(&input()));
-                            parsed.set(parse_json_value(&input()).ok());
-                            output.set(result);
-                            view.set(JsonView::Source);
-                        },
-                        "格式化"
-                    }
-                    button {
-                        onclick: move |_| {
-                            let result = minify_json(&input());
-                            status.set(json_status(&input()));
-                            parsed.set(parse_json_value(&input()).ok());
-                            output.set(result);
-                            view.set(JsonView::Source);
-                        },
-                        "压缩"
-                    }
-                    button {
-                        onclick: move |_| {
-                            status.set(json_status(&input()));
-                            parsed.set(parse_json_value(&input()).ok());
-                            if let Ok(value) = parse_json_value(&input()) {
-                                output.set(serde_json::to_string_pretty(&value).unwrap_or_default());
-                            } else {
-                                output.set(json_status(&input()));
-                            }
-                        },
-                        "校验"
-                    }
-                }
-                div { class: "status-pill", "{status}" }
-            }
-
-            section { class: "panel tall",
-                div { class: "panel-head",
-                    h2 { "输出" }
-                    span { "高亮源码 / 可折叠树" }
-                }
-                div { class: "segmented",
-                    button {
-                        class: if view() == JsonView::Source { "segment active" } else { "segment" },
-                        onclick: move |_| view.set(JsonView::Source),
-                        "高亮源码"
-                    }
-                    button {
-                        class: if view() == JsonView::Tree { "segment active" } else { "segment" },
-                        onclick: move |_| view.set(JsonView::Tree),
-                        "树结构"
-                    }
-                }
-                if view() == JsonView::Source {
-                    JsonHighlighter { source: output() }
-                } else {
-                    div { class: "json-tree mono",
-                        if let Some(value) = parsed() {
-                            JsonTree { value, label: None }
-                        } else {
-                            div { class: "json-empty", "{status}" }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn CodecTool() -> Element {
-    let mut input = use_signal(|| "Hello, DevToolbox".to_string());
-    let mut output = use_signal(String::new);
-
-    rsx! {
-        div { class: "grid two fill",
-            section { class: "panel tall",
-                div { class: "panel-head",
-                    h2 { "原文 / 编码内容" }
-                    span { "UTF-8 文本" }
-                }
-                textarea {
-                    class: "field mono grow",
-                    value: "{input}",
-                    oninput: move |event| input.set(event.value())
-                }
-                div { class: "button-grid",
-                    button { onclick: move |_| output.set(base64_encode(&input())), "Base64 编码" }
-                    button { onclick: move |_| output.set(base64_decode(&input())), "Base64 解码" }
-                    button { onclick: move |_| output.set(urlencoding::encode(&input()).to_string()), "URL 编码" }
-                    button { onclick: move |_| output.set(url_decode(&input())), "URL 解码" }
-                    button { onclick: move |_| output.set(hex::encode(input().as_bytes())), "Hex 编码" }
-                    button { onclick: move |_| output.set(hex_decode(&input())), "Hex 解码" }
-                }
-            }
-
-            section { class: "panel tall",
-                div { class: "panel-head",
-                    h2 { "结果" }
-                    span { "编码转换输出" }
-                }
-                textarea {
-                    class: "field mono grow",
-                    value: "{output}",
-                    oninput: move |event| output.set(event.value())
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn CryptoTool() -> Element {
-    let mut input = use_signal(|| "payload".to_string());
-    let mut key = use_signal(|| random_hex(32));
-    let mut nonce = use_signal(|| random_hex(12));
-    let mut output = use_signal(String::new);
-
-    rsx! {
-        div { class: "grid two fill",
-            section { class: "panel tall",
-                div { class: "panel-head",
-                    h2 { "输入" }
-                    span { "摘要或 AES-GCM 明文/密文" }
-                }
-                textarea {
-                    class: "field mono grow",
-                    value: "{input}",
-                    oninput: move |event| input.set(event.value())
-                }
-                div { class: "button-grid",
-                    button { onclick: move |_| output.set(hash_digest::<Md5>(&input())), "MD5" }
-                    button { onclick: move |_| output.set(hash_digest::<Sha1>(&input())), "SHA-1" }
-                    button { onclick: move |_| output.set(hash_digest::<Sha256>(&input())), "SHA-256" }
-                    button { onclick: move |_| output.set(hash_digest::<Sha512>(&input())), "SHA-512" }
-                }
-                div { class: "key-grid",
-                    label {
-                        span { "AES Key Hex（16 或 32 字节）" }
-                        input {
-                            class: "field mono single",
-                            value: "{key}",
-                            oninput: move |event| key.set(event.value())
-                        }
-                    }
-                    label {
-                        span { "Nonce Hex（12 字节）" }
-                        input {
-                            class: "field mono single",
-                            value: "{nonce}",
-                            oninput: move |event| nonce.set(event.value())
-                        }
-                    }
-                }
-                div { class: "button-row",
-                    button { onclick: move |_| key.set(random_hex(32)), "生成 AES-256 Key" }
-                    button { onclick: move |_| nonce.set(random_hex(12)), "生成 Nonce" }
-                    button { onclick: move |_| output.set(aes_encrypt(&input(), &key(), &nonce())), "AES-GCM 加密" }
-                    button { onclick: move |_| output.set(aes_decrypt(&input(), &key(), &nonce())), "AES-GCM 解密" }
-                }
-            }
-
-            section { class: "panel tall",
-                div { class: "panel-head",
-                    h2 { "结果" }
-                    span { "摘要为 Hex；AES 密文为 Base64" }
-                }
-                textarea {
-                    class: "field mono grow",
-                    value: "{output}",
-                    oninput: move |event| output.set(event.value())
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn RandomTool() -> Element {
-    let mut length = use_signal(|| "32".to_string());
-    let mut output = use_signal(|| random_password(32));
-
-    rsx! {
-        div { class: "grid two",
-            section { class: "panel",
-                div { class: "panel-head",
-                    h2 { "生成器" }
-                    span { "适合 token、secret、测试数据" }
-                }
-                label { class: "inline-field",
-                    span { "长度" }
-                    input {
-                        class: "field mono single small-input",
-                        value: "{length}",
-                        oninput: move |event| length.set(event.value())
-                    }
-                }
-                div { class: "button-grid",
-                    button {
-                        onclick: move |_| output.set(random_password(parse_len(&length()))),
-                        "随机密码"
-                    }
-                    button { onclick: move |_| output.set(random_hex(parse_len(&length()))), "Hex Key" }
-                    button { onclick: move |_| output.set(base64_encode_bytes(parse_len(&length()))), "Base64 Key" }
-                    button { onclick: move |_| output.set(Uuid::new_v4().to_string()), "UUID v4" }
-                }
-                div { class: "reference-list",
-                    Metric { label: "AES-128 Key", value: random_hex(16) }
-                    Metric { label: "AES-256 Key", value: random_hex(32) }
-                    Metric { label: "GCM Nonce", value: random_hex(12) }
-                }
-            }
-            section { class: "panel",
-                div { class: "panel-head",
-                    h2 { "结果" }
-                    span { "一键复制生成值" }
-                }
-                textarea {
-                    class: "field mono medium",
-                    value: "{output}",
-                    oninput: move |event| output.set(event.value())
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn Metric(label: String, value: String) -> Element {
-    rsx! {
-        div { class: "metric",
-            span { "{label}" }
-            code { "{value}" }
-        }
-    }
-}
-
-#[component]
-fn OutputBlock(value: String) -> Element {
-    rsx! {
-        div { class: "output-block mono", "{value}" }
-    }
-}
-
-#[component]
-fn JsonHighlighter(source: String) -> Element {
-    let tokens = tokenize_json(&source);
-
-    rsx! {
-        pre { class: "json-source mono",
-            for token in tokens {
-                span { class: "{token.class_name}", "{token.text}" }
-            }
-        }
-    }
-}
-
-#[component]
-fn JsonTree(value: serde_json::Value, label: Option<String>) -> Element {
-    match value {
-        serde_json::Value::Object(map) => {
-            let count = map.len();
-            rsx! {
-                details { class: "tree-node", open: true,
-                    summary {
-                        JsonLabel { label }
-                        span { class: "json-punctuation", "{{" }
-                        span { class: "json-meta", "{count} keys" }
-                        span { class: "json-punctuation", "}}" }
-                    }
-                    div { class: "tree-children",
-                        for (key, child) in map {
-                            JsonTree { value: child, label: Some(key) }
-                        }
-                    }
-                }
-            }
-        }
-        serde_json::Value::Array(items) => {
-            let count = items.len();
-            rsx! {
-                details { class: "tree-node", open: true,
-                    summary {
-                        JsonLabel { label }
-                        span { class: "json-punctuation", "[" }
-                        span { class: "json-meta", "{count} items" }
-                        span { class: "json-punctuation", "]" }
-                    }
-                    div { class: "tree-children",
-                        for (index, child) in items.into_iter().enumerate() {
-                            JsonTree { value: child, label: Some(format!("[{index}]")) }
-                        }
-                    }
-                }
-            }
-        }
-        primitive => {
-            let (class_name, text) = json_primitive_text(&primitive);
-            rsx! {
-                div { class: "tree-leaf",
-                    JsonLabel { label }
-                    span { class: "{class_name}", "{text}" }
-                }
-            }
-        }
-    }
-}
-
-#[component]
-fn JsonLabel(label: Option<String>) -> Element {
-    rsx! {
-        if let Some(label) = label {
-            span { class: "json-key", "\"{label}\"" }
-            span { class: "json-punctuation", ": " }
-        }
-    }
-}
-
-fn time_from_timestamp(input: &str) -> String {
+#[tauri::command]
+fn time_from_timestamp(input: String) -> String {
     let trimmed = input.trim();
     let parsed = match trimmed.parse::<i64>() {
         Ok(value) => value,
@@ -585,7 +70,8 @@ fn time_from_timestamp(input: &str) -> String {
     }
 }
 
-fn timestamp_from_local(input: &str) -> String {
+#[tauri::command]
+fn timestamp_from_local(input: String) -> String {
     let naive = match NaiveDateTime::parse_from_str(input.trim(), "%Y-%m-%d %H:%M:%S") {
         Ok(value) => value,
         Err(_) => return "无法解析日期，请使用 YYYY-MM-DD HH:mm:ss".to_string(),
@@ -602,22 +88,98 @@ fn timestamp_from_local(input: &str) -> String {
     }
 }
 
-fn pretty_json(input: &str) -> String {
-    match parse_json_value(input) {
-        Ok(value) => serde_json::to_string_pretty(&value).unwrap_or_else(|err| err.to_string()),
-        Err(err) => format!("JSON 解析失败: {err}"),
+#[tauri::command]
+fn process_json(input: String, mode: String) -> JsonResult {
+    let parsed = parse_json_value(&input);
+    let status = json_status_from_result(&parsed);
+
+    let output = match (&parsed, mode.as_str()) {
+        (Ok(value), "minify") => serde_json::to_string(value).unwrap_or_else(|err| err.to_string()),
+        (Ok(value), _) => serde_json::to_string_pretty(value).unwrap_or_else(|err| err.to_string()),
+        (Err(err), _) => format!("JSON 解析失败: {err}"),
+    };
+
+    JsonResult {
+        output,
+        status,
+        parsed: parsed.ok(),
     }
 }
 
-fn minify_json(input: &str) -> String {
-    match parse_json_value(input) {
-        Ok(value) => serde_json::to_string(&value).unwrap_or_else(|err| err.to_string()),
-        Err(err) => format!("JSON 解析失败: {err}"),
+#[tauri::command]
+fn codec_transform(input: String, mode: String) -> String {
+    match mode.as_str() {
+        "base64_encode" => base64_encode(&input),
+        "base64_decode" => base64_decode(&input),
+        "url_encode" => urlencoding::encode(&input).to_string(),
+        "url_decode" => url_decode(&input),
+        "hex_encode" => hex::encode(input.as_bytes()),
+        "hex_decode" => hex_decode(&input),
+        _ => "未知编码转换类型".to_string(),
     }
 }
 
-fn json_status(input: &str) -> String {
-    match parse_json_value(input) {
+#[tauri::command]
+fn hash_text(input: String, algorithm: String) -> String {
+    match algorithm.as_str() {
+        "md5" => hash_digest::<Md5>(&input),
+        "sha1" => hash_digest::<Sha1>(&input),
+        "sha256" => hash_digest::<Sha256>(&input),
+        "sha512" => hash_digest::<Sha512>(&input),
+        _ => "未知摘要算法".to_string(),
+    }
+}
+
+#[tauri::command]
+fn aes_gcm_transform(input: String, key_hex: String, nonce_hex: String, mode: String) -> String {
+    match mode.as_str() {
+        "encrypt" => aes_encrypt(&input, &key_hex, &nonce_hex),
+        "decrypt" => aes_decrypt(&input, &key_hex, &nonce_hex),
+        _ => "未知 AES 操作".to_string(),
+    }
+}
+
+#[tauri::command]
+fn generate_random(kind: String, length: String) -> String {
+    let size = parse_len(&length);
+
+    match kind.as_str() {
+        "password" => random_password(size),
+        "hex" => random_hex(size),
+        "base64" => base64_encode_bytes(size),
+        "uuid" => Uuid::new_v4().to_string(),
+        _ => "未知生成类型".to_string(),
+    }
+}
+
+#[tauri::command]
+fn random_hex_bytes(length: String) -> String {
+    random_hex(parse_len(&length))
+}
+
+fn main() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            clock_snapshot,
+            time_from_timestamp,
+            timestamp_from_local,
+            process_json,
+            codec_transform,
+            hash_text,
+            aes_gcm_transform,
+            generate_random,
+            random_hex_bytes,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running DevToolbox");
+}
+
+fn parse_json_value(input: &str) -> serde_json::Result<serde_json::Value> {
+    serde_json::from_str::<serde_json::Value>(input)
+}
+
+fn json_status_from_result(result: &serde_json::Result<serde_json::Value>) -> String {
+    match result {
         Ok(value) => {
             let kind = match value {
                 serde_json::Value::Null => "null",
@@ -630,122 +192,6 @@ fn json_status(input: &str) -> String {
             format!("JSON 有效，根节点类型：{kind}")
         }
         Err(err) => format!("JSON 无效: {err}"),
-    }
-}
-
-fn parse_json_value(input: &str) -> serde_json::Result<serde_json::Value> {
-    serde_json::from_str::<serde_json::Value>(input)
-}
-
-#[derive(Clone)]
-struct JsonToken {
-    class_name: &'static str,
-    text: String,
-}
-
-fn tokenize_json(source: &str) -> Vec<JsonToken> {
-    let mut tokens = Vec::new();
-    let chars: Vec<char> = source.chars().collect();
-    let mut index = 0;
-
-    while index < chars.len() {
-        let current = chars[index];
-        if current == '"' {
-            let start = index;
-            index += 1;
-            while index < chars.len() {
-                if chars[index] == '\\' {
-                    index += 2;
-                    continue;
-                }
-                if chars[index] == '"' {
-                    index += 1;
-                    break;
-                }
-                index += 1;
-            }
-            let text: String = chars[start..index].iter().collect();
-            let mut next = index;
-            while next < chars.len() && chars[next].is_whitespace() {
-                next += 1;
-            }
-            let class_name = if next < chars.len() && chars[next] == ':' {
-                "json-key"
-            } else {
-                "json-string"
-            };
-            tokens.push(JsonToken { class_name, text });
-        } else if current.is_ascii_digit() || current == '-' {
-            let start = index;
-            index += 1;
-            while index < chars.len()
-                && (chars[index].is_ascii_digit()
-                    || chars[index] == '.'
-                    || chars[index] == 'e'
-                    || chars[index] == 'E'
-                    || chars[index] == '+'
-                    || chars[index] == '-')
-            {
-                index += 1;
-            }
-            tokens.push(JsonToken {
-                class_name: "json-number",
-                text: chars[start..index].iter().collect(),
-            });
-        } else if chars_start_with(&chars, index, "true") {
-            tokens.push(JsonToken {
-                class_name: "json-bool",
-                text: "true".to_string(),
-            });
-            index += 4;
-        } else if chars_start_with(&chars, index, "false") {
-            tokens.push(JsonToken {
-                class_name: "json-bool",
-                text: "false".to_string(),
-            });
-            index += 5;
-        } else if chars_start_with(&chars, index, "null") {
-            tokens.push(JsonToken {
-                class_name: "json-null",
-                text: "null".to_string(),
-            });
-            index += 4;
-        } else if "{}[]:,".contains(current) {
-            tokens.push(JsonToken {
-                class_name: "json-punctuation",
-                text: current.to_string(),
-            });
-            index += 1;
-        } else {
-            tokens.push(JsonToken {
-                class_name: "json-space",
-                text: current.to_string(),
-            });
-            index += 1;
-        }
-    }
-
-    tokens
-}
-
-fn chars_start_with(chars: &[char], index: usize, word: &str) -> bool {
-    word.chars()
-        .enumerate()
-        .all(|(offset, expected)| chars.get(index + offset) == Some(&expected))
-}
-
-fn json_primitive_text(value: &serde_json::Value) -> (&'static str, String) {
-    match value {
-        serde_json::Value::String(value) => (
-            "json-string",
-            serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string()),
-        ),
-        serde_json::Value::Number(value) => ("json-number", value.to_string()),
-        serde_json::Value::Bool(value) => ("json-bool", value.to_string()),
-        serde_json::Value::Null => ("json-null", "null".to_string()),
-        serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
-            ("json-punctuation", String::new())
-        }
     }
 }
 
